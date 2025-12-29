@@ -9,7 +9,9 @@ from unittest.mock import MagicMock
 from datetime import datetime, timedelta, timezone
 
 # Add the project root to the Python path
-sys.path.insert(0, "/home/runner/work/google_workspace_mcp/google_workspace_mcp")
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 
 @pytest.fixture(autouse=True)
