@@ -31,6 +31,13 @@ class OAuthConfig:
         # External URL for reverse proxy scenarios
         self.external_url = os.getenv("WORKSPACE_EXTERNAL_URL")
 
+        # OAuth credential override configuration
+        # When "true" (default): Interactive OAuth flow credentials take priority over MCP_CREDENTIALS_JSON
+        # When "false": MCP_CREDENTIALS_JSON can overwrite existing OAuth credentials
+        self.is_oauth_override_credentials_json = (
+            os.getenv("IS_OAUTH_OVERRIDE_CREDENTIALS_JSON", "true").lower() == "true"
+        )
+
         # OAuth client configuration
         self.client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
         self.client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
@@ -223,6 +230,7 @@ class OAuthConfig:
             "transport_mode": self._transport_mode,
             "total_redirect_uris": len(self.get_redirect_uris()),
             "total_allowed_origins": len(self.get_allowed_origins()),
+            "is_oauth_override_credentials_json": self.is_oauth_override_credentials_json,
         }
 
     def set_transport_mode(self, mode: str) -> None:
@@ -436,3 +444,16 @@ def is_stateless_mode() -> bool:
 def is_external_oauth21_provider() -> bool:
     """Check if external OAuth 2.1 provider mode is enabled."""
     return get_oauth_config().is_external_oauth21_provider()
+
+
+def is_oauth_override_credentials_json() -> bool:
+    """
+    Check if OAuth credentials take priority over MCP_CREDENTIALS_JSON.
+
+    When True (default): Interactive OAuth flow credentials take priority.
+    When False: MCP_CREDENTIALS_JSON can overwrite existing OAuth credentials.
+
+    Returns:
+        True if OAuth credentials override MCP_CREDENTIALS_JSON
+    """
+    return get_oauth_config().is_oauth_override_credentials_json

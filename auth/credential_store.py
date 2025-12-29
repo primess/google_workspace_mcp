@@ -9,8 +9,8 @@ import os
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, timezone
 from google.oauth2.credentials import Credentials
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,97 @@ class CredentialStore(ABC):
             List of user email addresses
         """
         pass
+
+    def store_raw_tokens(
+        self,
+        user_email: str,
+        tokens: Dict[str, Any],
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+    ) -> bool:
+        """
+        Store credentials from raw token data (e.g., from OAuth responses).
+
+        This method handles various token formats:
+        - Accepts both "access_token" and "token" field names
+        - Calculates "expiry" from "expires_in" when not provided
+        - Parses space-separated scope strings into lists
+        - Ensures all required fields for token refresh are present
+
+        Args:
+            user_email: User's email address
+            tokens: Raw token dictionary from OAuth response
+            client_id: OAuth client ID (optional, may be in tokens)
+            client_secret: OAuth client secret (optional, may be in tokens)
+
+        Returns:
+            True if successfully stored, False otherwise
+        """
+        # Handle both access_token and token field names
+        # Google OAuth responses use "access_token", google-auth library uses "token"
+        token = tokens.get("access_token") or tokens.get("token")
+
+        # Validate that we have a token
+        if not token:
+            logger.warning(
+                f"Cannot store credentials for {user_email}: no token provided"
+            )
+            return False
+
+        # Calculate expiry from expires_in if not provided
+        expiry = None
+        if tokens.get("expiry"):
+            expiry = tokens["expiry"]
+        elif tokens.get("expires_in"):
+            expiry = (
+                datetime.now(timezone.utc) + timedelta(seconds=tokens["expires_in"])
+            ).isoformat()
+
+        # Parse scope string to list
+        # Google OAuth returns space-separated scope strings ("scope"),
+        # while google-auth library expects lists ("scopes")
+        if isinstance(tokens.get("scope"), str):
+            scopes = tokens["scope"].split()
+        else:
+            scopes = tokens.get("scopes", [])
+
+        # Get client credentials from tokens or parameters
+        final_client_id = client_id or tokens.get("client_id")
+        final_client_secret = client_secret or tokens.get("client_secret")
+
+        # Build complete credential structure
+        credential_data = {
+            "token": token,
+            "refresh_token": tokens.get("refresh_token"),
+            "token_uri": tokens.get("token_uri", "https://oauth2.googleapis.com/token"),
+            "client_id": final_client_id,
+            "client_secret": final_client_secret,
+            "scopes": scopes,
+            "expiry": expiry,
+        }
+
+        # Parse expiry for Credentials object
+        expiry_dt = None
+        if expiry:
+            try:
+                expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+                # Ensure timezone-naive for Google auth library
+                if expiry_dt.tzinfo is not None:
+                    expiry_dt = expiry_dt.replace(tzinfo=None)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Could not parse expiry time: {e}")
+
+        credentials = Credentials(
+            token=credential_data["token"],
+            refresh_token=credential_data.get("refresh_token"),
+            token_uri=credential_data.get("token_uri"),
+            client_id=credential_data.get("client_id"),
+            client_secret=credential_data.get("client_secret"),
+            scopes=credential_data.get("scopes"),
+            expiry=expiry_dt,
+        )
+
+        return self.store_credential(user_email, credentials)
 
 
 class LocalDirectoryCredentialStore(CredentialStore):
