@@ -119,6 +119,37 @@ class TestCredentialFormat:
         creds3 = self.store.get_credential("user3@example.com")
         assert creds3.token == "primary_token"
 
+    def test_save_credentials_fails_without_token(self):
+        """Test that store_raw_tokens returns False when no token is provided."""
+        tokens = {
+            "refresh_token": "refresh_token_value",
+            "expires_in": 3600,
+        }
+
+        result = self.store.store_raw_tokens(
+            user_email=self.test_email,
+            tokens=tokens,
+            client_id="test_client",
+            client_secret="test_secret",
+        )
+        assert result is False
+
+    def test_save_credentials_fails_with_empty_token(self):
+        """Test that store_raw_tokens returns False when token is empty string."""
+        tokens = {
+            "access_token": "",
+            "token": "",
+            "refresh_token": "refresh_token_value",
+        }
+
+        result = self.store.store_raw_tokens(
+            user_email=self.test_email,
+            tokens=tokens,
+            client_id="test_client",
+            client_secret="test_secret",
+        )
+        assert result is False
+
     def test_save_credentials_calculates_expiry_from_expires_in(self):
         """Test that expiry is calculated from expires_in when not provided."""
         expires_in_seconds = 3600  # 1 hour
@@ -155,7 +186,9 @@ class TestCredentialFormat:
 
     def test_save_credentials_uses_explicit_expiry_when_provided(self):
         """Test that explicit expiry takes priority over expires_in."""
-        explicit_expiry = "2025-12-31T23:59:59+00:00"
+        # Use a date 1 year in the future for testing
+        future_date = datetime.now(timezone.utc) + timedelta(days=365)
+        explicit_expiry = future_date.isoformat()
         tokens = {
             "access_token": "test_token",
             "refresh_token": "test_refresh",
@@ -173,10 +206,10 @@ class TestCredentialFormat:
         assert result is True
         credentials = self.store.get_credential(self.test_email)
         assert credentials.expiry is not None
-        # The stored expiry should be 2025-12-31 23:59:59 (timezone-naive)
-        assert credentials.expiry.year == 2025
-        assert credentials.expiry.month == 12
-        assert credentials.expiry.day == 31
+        # The stored expiry should match the future date (timezone-naive)
+        assert credentials.expiry.year == future_date.year
+        assert credentials.expiry.month == future_date.month
+        assert credentials.expiry.day == future_date.day
 
     def test_save_credentials_parses_scope_string_to_list(self):
         """Test that space-separated scope strings are parsed into lists."""

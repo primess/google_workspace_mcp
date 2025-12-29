@@ -95,7 +95,15 @@ class CredentialStore(ABC):
             True if successfully stored, False otherwise
         """
         # Handle both access_token and token field names
+        # Google OAuth responses use "access_token", google-auth library uses "token"
         token = tokens.get("access_token") or tokens.get("token")
+
+        # Validate that we have a token
+        if not token:
+            logger.warning(
+                f"Cannot store credentials for {user_email}: no token provided"
+            )
+            return False
 
         # Calculate expiry from expires_in if not provided
         expiry = None
@@ -107,6 +115,8 @@ class CredentialStore(ABC):
             ).isoformat()
 
         # Parse scope string to list
+        # Google OAuth returns space-separated scope strings ("scope"),
+        # while google-auth library expects lists ("scopes")
         if isinstance(tokens.get("scope"), str):
             scopes = tokens["scope"].split()
         else:
